@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BVA — Dinâmica CTFL</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0D0F12;
+    --surface: #161A20;
+    --surface2: #1E2430;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #F0F2F5;
+    --muted: #8A90A0;
+    --accent: #5B8FF9;
+    --accent2: #3ECFB2;
+    --danger: #FF6B6B;
+    --success: #56C87A;
+    --warn: #F5A623;
+    --mono: 'DM Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* noise overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0;
+  }
+
+  .screen { position: relative; z-index: 1; width: 100%; max-width: 960px; padding: 2rem; }
+
+  /* ── INTRO ── */
+  .intro { text-align: center; animation: fadeUp 0.6s ease both; }
+  .intro-eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em; color: var(--accent); text-transform: uppercase; margin-bottom: 1rem; }
+  .intro-title { font-size: clamp(2.4rem, 6vw, 4rem); font-weight: 600; line-height: 1.1; margin-bottom: 1rem; }
+  .intro-title span { color: var(--accent2); }
+  .intro-sub { font-size: 1.1rem; color: var(--muted); margin-bottom: 2.5rem; max-width: 540px; margin-left: auto; margin-right: auto; }
+  .intro-badges { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 2.5rem; }
+  .ibadge { background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 30px; padding: 8px 20px; font-size: 14px; color: var(--muted); }
+  .ibadge strong { color: var(--text); }
+
+  /* ── QUIZ ── */
+  .quiz-wrap { animation: fadeUp 0.5s ease both; }
+  .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .q-counter { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .bva-pill { font-family: var(--mono); font-size: 11px; padding: 4px 12px; border-radius: 20px; font-weight: 500; letter-spacing: 0.06em; }
+  .pill-2pt { background: rgba(91,143,249,0.12); color: var(--accent); border: 0.5px solid rgba(91,143,249,0.3); }
+  .pill-3pt { background: rgba(245,166,35,0.12); color: var(--warn); border: 0.5px solid rgba(245,166,35,0.3); }
+
+  .progress-rail { width: 100%; height: 3px; background: var(--surface2); border-radius: 3px; margin-bottom: 2rem; }
+  .progress-fill { height: 3px; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.5s ease; }
+
+  .q-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-bottom: 0.5rem; }
+  .q-spec { font-size: 1.05rem; font-weight: 500; margin-bottom: 0.4rem; }
+  .q-desc { font-size: 13px; color: var(--muted); margin-bottom: 1.5rem; }
+
+  /* diagram */
+  .diagram { display: flex; align-items: center; gap: 0; overflow-x: auto; margin-bottom: 1.75rem; padding-bottom: 4px; }
+  .dblock { display: flex; flex-direction: column; align-items: center; min-width: 72px; }
+  .dval { font-family: var(--mono); font-size: 14px; font-weight: 500; padding: 7px 14px; border-radius: 8px; white-space: nowrap; }
+  .dval.is-bug { background: rgba(255,107,107,0.12); color: var(--danger); border: 0.5px solid rgba(255,107,107,0.3); }
+  .dval.is-ok { background: rgba(86,200,122,0.12); color: var(--success); border: 0.5px solid rgba(86,200,122,0.3); }
+  .dlabel { font-size: 10px; color: var(--muted); margin-top: 5px; font-family: var(--mono); }
+  .darrow { color: var(--border2); font-size: 16px; margin: 0 4px; padding-bottom: 16px; }
+
+  /* scenario */
+  .scenario-box { background: var(--surface); border: 0.5px solid var(--border2); border-left: 3px solid var(--warn); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.75rem; }
+  .scenario-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; color: var(--warn); text-transform: uppercase; margin-bottom: 6px; }
+  .scenario-text { font-size: 15px; color: var(--text); font-style: italic; }
+
+  /* answer buttons */
+  .answer-row { display: flex; gap: 14px; }
+  .ans-btn {
+    flex: 1; padding: 1rem 1.5rem; border-radius: 12px; font-family: var(--sans); font-size: 15px; font-weight: 500;
+    border: 1.5px solid; cursor: pointer; transition: transform 0.12s, opacity 0.2s, background 0.2s;
+    background: transparent;
+  }
+  .ans-btn:hover { transform: translateY(-2px); }
+  .ans-btn:active { transform: scale(0.97); }
+  .btn-bug { color: var(--danger); border-color: rgba(255,107,107,0.4); }
+  .btn-bug:hover { background: rgba(255,107,107,0.08); }
+  .btn-ok { color: var(--success); border-color: rgba(86,200,122,0.4); }
+  .btn-ok:hover { background: rgba(86,200,122,0.08); }
+  .ans-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+  .ans-btn.selected-bug { background: rgba(255,107,107,0.15); border-color: var(--danger); }
+  .ans-btn.selected-ok { background: rgba(86,200,122,0.15); border-color: var(--success); }
+
+  /* feedback */
+  .feedback-panel { margin-top: 1.25rem; padding: 1rem 1.25rem; border-radius: 10px; font-size: 14px; line-height: 1.6; display: none; }
+  .feedback-panel.show { display: block; animation: fadeUp 0.3s ease; }
+  .feedback-panel.correct { background: rgba(86,200,122,0.1); border: 0.5px solid rgba(86,200,122,0.3); color: var(--success); }
+  .feedback-panel.wrong { background: rgba(255,107,107,0.1); border: 0.5px solid rgba(255,107,107,0.3); color: var(--danger); }
+  .fb-icon { font-size: 18px; margin-right: 6px; }
+  .fb-hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+  .next-btn {
+    display: none; margin-top: 1.25rem; width: 100%; padding: 0.9rem; border-radius: 10px;
+    background: var(--surface2); border: 0.5px solid var(--border2); color: var(--text);
+    font-family: var(--sans); font-size: 15px; font-weight: 500; cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .next-btn:hover { background: var(--surface); }
+  .next-btn.show { display: block; animation: fadeUp 0.3s ease; }
+
+  /* ── RESULT ── */
+  .result-wrap { text-align: center; animation: fadeUp 0.6s ease both; }
+  .result-score { font-size: 7rem; font-weight: 600; font-family: var(--mono); color: var(--accent2); line-height: 1; margin-bottom: 0.5rem; }
+  .result-label { font-size: 1.1rem; color: var(--muted); margin-bottom: 0.5rem; }
+  .result-msg { font-size: 1.2rem; font-weight: 500; margin-bottom: 2.5rem; }
+  .result-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .r-btn { padding: 0.85rem 2rem; border-radius: 10px; font-family: var(--sans); font-size: 15px; font-weight: 500; cursor: pointer; border: 1.5px solid var(--border2); background: var(--surface2); color: var(--text); transition: background 0.15s; }
+  .r-btn:hover { background: var(--surface); }
+  .r-btn.primary { border-color: rgba(91,143,249,0.4); color: var(--accent); background: rgba(91,143,249,0.08); }
+  .r-btn.primary:hover { background: rgba(91,143,249,0.15); }
+
+  /* summary bar */
+  .summary-bar { display: flex; gap: 12px; justify-content: center; margin-bottom: 2rem; flex-wrap: wrap; }
+  .sum-chip { font-family: var(--mono); font-size: 12px; padding: 6px 16px; border-radius: 20px; }
+  .sum-correct { background: rgba(86,200,122,0.12); color: var(--success); border: 0.5px solid rgba(86,200,122,0.3); }
+  .sum-wrong { background: rgba(255,107,107,0.12); color: var(--danger); border: 0.5px solid rgba(255,107,107,0.3); }
+
+  /* ── UTIL ── */
+  @keyframes fadeUp { from { opacity:0; transform: translateY(18px); } to { opacity:1; transform: translateY(0); } }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- INTRO -->
+<div class="screen" id="screen-intro">
+  <div class="intro">
+    <div class="intro-eyebrow">CTFL — Análise de Valor Limite</div>
+    <h1 class="intro-title">Você sabe identificar<br>um <span>bug com BVA</span>?</h1>
+    <p class="intro-sub">4 cenários rápidos. Decida se o comportamento descrito é um bug ou comportamento esperado, aplicando BVA de 2 ou 3 pontos.</p>
+    <div class="intro-badges">
+      <div class="ibadge"><strong>4</strong> questões</div>
+      <div class="ibadge">BVA <strong>2 pontos</strong></div>
+      <div class="ibadge">BVA <strong>3 pontos</strong></div>
+      <div class="ibadge">Feedback <strong>imediato</strong></div>
+    </div>
+    <button class="ans-btn btn-ok" style="max-width:260px;margin:auto;" onclick="startQuiz()">Iniciar dinâmica</button>
+  </div>
+</div>
+
+<!-- QUIZ -->
+<div class="screen hidden" id="screen-quiz">
+  <div class="quiz-wrap">
+    <div class="top-bar">
+      <span class="q-counter" id="q-counter">Questão 1 de 4</span>
+      <span class="bva-pill" id="bva-pill"></span>
+    </div>
+    <div class="progress-rail"><div class="progress-fill" id="prog-fill" style="width:0%"></div></div>
+
+    <div class="q-label" id="q-label"></div>
+    <div class="q-spec" id="q-spec"></div>
+    <div class="q-desc" id="q-desc"></div>
+
+    <div class="diagram" id="diagram"></div>
+
+    <div class="scenario-box">
+      <div class="scenario-label">Cenário detectado</div>
+      <div class="scenario-text" id="scenario-text"></div>
+    </div>
+
+    <div class="answer-row">
+      <button class="ans-btn btn-bug" id="btn-bug" onclick="answer(true)">🐛 Bug detectado</button>
+      <button class="ans-btn btn-ok" id="btn-ok" onclick="answer(false)">✓ Comportamento esperado</button>
+    </div>
+
+    <div class="feedback-panel" id="fb-panel">
+      <div id="fb-main"></div>
+      <div class="fb-hint" id="fb-hint"></div>
+    </div>
+    <button class="next-btn" id="next-btn" onclick="nextQuestion()">Próxima questão →</button>
+  </div>
+</div>
+
+<!-- RESULT -->
+<div class="screen hidden" id="screen-result">
+  <div class="result-wrap">
+    <div class="result-score" id="res-score"></div>
+    <div class="result-label">acertos de 4 questões</div>
+    <div class="summary-bar" id="res-summary"></div>
+    <div class="result-msg" id="res-msg"></div>
+    <div class="result-actions">
+      <button class="r-btn primary" onclick="restart()">Reiniciar dinâmica</button>
+      <button class="r-btn" onclick="showReference()">Ver referência BVA</button>
+    </div>
+  </div>
+</div>
+
+<!-- REFERENCE -->
+<div class="screen hidden" id="screen-ref">
+  <div style="animation: fadeUp 0.5s ease both;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+      <div>
+        <div class="intro-eyebrow">CTFL — Referência rápida</div>
+        <h2 style="font-size:1.6rem;font-weight:600;">Análise de Valor Limite</h2>
+      </div>
+      <button class="r-btn" onclick="restart()">← Reiniciar</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:1.5rem;">
+      <div style="background:var(--surface);border:0.5px solid var(--border2);border-top:2px solid var(--accent);border-radius:12px;padding:1.25rem;">
+        <div style="font-family:var(--mono);font-size:11px;letter-spacing:0.12em;color:var(--accent);margin-bottom:10px;">BVA — 2 PONTOS</div>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:12px;">Testa exatamente no limite. Dois valores por fronteira.</p>
+        <div style="font-family:var(--mono);font-size:13px;line-height:2;">
+          <div><span style="color:var(--danger);">min − 1</span> <span style="color:var(--muted);font-size:11px;">— inválido</span></div>
+          <div><span style="color:var(--success);">min</span> <span style="color:var(--muted);font-size:11px;">— válido (limite)</span></div>
+          <div><span style="color:var(--success);">max</span> <span style="color:var(--muted);font-size:11px;">— válido (limite)</span></div>
+          <div><span style="color:var(--danger);">max + 1</span> <span style="color:var(--muted);font-size:11px;">— inválido</span></div>
+        </div>
+        <div style="margin-top:14px;font-size:12px;color:var(--muted);">Total por partição: <strong style="color:var(--text);">4 valores</strong></div>
+      </div>
+
+      <div style="background:var(--surface);border:0.5px solid var(--border2);border-top:2px solid var(--warn);border-radius:12px;padding:1.25rem;">
+        <div style="font-family:var(--mono);font-size:11px;letter-spacing:0.12em;color:var(--warn);margin-bottom:10px;">BVA — 3 PONTOS</div>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:12px;">Inclui adjacentes. Três valores por fronteira.</p>
+        <div style="font-family:var(--mono);font-size:13px;line-height:2;">
+          <div><span style="color:var(--danger);">min − 1</span> <span style="color:var(--muted);font-size:11px;">— inválido</span></div>
+          <div><span style="color:var(--success);">min</span> <span style="color:var(--muted);font-size:11px;">— válido (limite)</span></div>
+          <div><span style="color:var(--success);">min + 1</span> <span style="color:var(--muted);font-size:11px;">— válido</span></div>
+          <div style="color:var(--muted);font-size:11px;padding:2px 0;">⋯ valores intermediários ⋯</div>
+          <div><span style="color:var(--success);">max − 1</span> <span style="color:var(--muted);font-size:11px;">— válido</span></div>
+          <div><span style="color:var(--success);">max</span> <span style="color:var(--muted);font-size:11px;">— válido (limite)</span></div>
+          <div><span style="color:var(--danger);">max + 1</span> <span style="color:var(--muted);font-size:11px;">— inválido</span></div>
+        </div>
+        <div style="margin-top:14px;font-size:12px;color:var(--muted);">Total por partição: <strong style="color:var(--text);">6 valores</strong></div>
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:0.5px solid var(--border2);border-radius:12px;padding:1.25rem;">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:0.12em;color:var(--muted);margin-bottom:10px;">QUANDO USAR CADA UM</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:14px;color:var(--muted);line-height:1.7;">
+        <div><strong style="color:var(--accent);">2 pontos</strong> — Risco baixo/médio. Menos casos de teste. Suficiente para a maioria dos campos simples.</div>
+        <div><strong style="color:var(--warn);">3 pontos</strong> — Risco alto. Detecta bugs nos adjacentes ao limite, especialmente em sistemas críticos (bancários, médicos).</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const questions = [
+  {
+    type: "2pt",
+    label: "BVA de 2 pontos — campo numérico",
+    spec: "Campo aceita valores entre 1 e 10",
+    desc: "Limites testados: min-1=0, min=1, max=10, max+1=11",
+    scenario: "O sistema aceita o valor 11 sem exibir mensagem de erro.",
+    isBug: true,
+    hint: "11 está acima do limite máximo (10). Aceitar este valor é um bug de fronteira.",
+    diagram: [
+      { val: "0", type: "bug", label: "min-1" },
+      { val: "1", type: "ok", label: "min" },
+      { val: "10", type: "ok", label: "max" },
+      { val: "11", type: "bug", label: "max+1" },
+    ]
+  },
+  {
+    type: "3pt",
+    label: "BVA de 3 pontos — faixa etária",
+    spec: "Sistema aceita idades entre 18 e 65 anos",
+    desc: "Limites testados: 17, 18, 19 ... 64, 65, 66",
+    scenario: "O sistema bloqueia o cadastro de uma pessoa com 19 anos e exibe 'idade inválida'.",
+    isBug: true,
+    hint: "19 é min+1, um valor perfeitamente válido no BVA 3 pontos. Bloqueá-lo é um bug.",
+    diagram: [
+      { val: "17", type: "bug", label: "min-1" },
+      { val: "18", type: "ok", label: "min" },
+      { val: "19", type: "ok", label: "min+1" },
+      { val: "64", type: "ok", label: "max-1" },
+      { val: "65", type: "ok", label: "max" },
+      { val: "66", type: "bug", label: "max+1" },
+    ]
+  },
+  {
+    type: "2pt",
+    label: "BVA de 2 pontos — valor de compra",
+    spec: "Desconto aplicado para compras entre R$50 e R$200",
+    desc: "Limites testados: R$49, R$50, R$200, R$201",
+    scenario: "O sistema aplica desconto para uma compra de R$49.",
+    isBug: true,
+    hint: "R$49 é min-1, valor fora da faixa válida. Aplicar desconto aqui é um bug de fronteira.",
+    diagram: [
+      { val: "49", type: "bug", label: "min-1" },
+      { val: "50", type: "ok", label: "min" },
+      { val: "200", type: "ok", label: "max" },
+      { val: "201", type: "bug", label: "max+1" },
+    ]
+  },
+  {
+    type: "3pt",
+    label: "BVA de 3 pontos — tamanho de senha",
+    spec: "Senha deve ter entre 8 e 20 caracteres",
+    desc: "Limites testados: 7, 8, 9 ... 19, 20, 21",
+    scenario: "O sistema rejeita uma senha com exatamente 20 caracteres.",
+    isBug: true,
+    hint: "20 é o limite máximo (max) — valor válido. Rejeitá-lo é claramente um bug.",
+    diagram: [
+      { val: "7", type: "bug", label: "min-1" },
+      { val: "8", type: "ok", label: "min" },
+      { val: "9", type: "ok", label: "min+1" },
+      { val: "19", type: "ok", label: "max-1" },
+      { val: "20", type: "ok", label: "max" },
+      { val: "21", type: "bug", label: "max+1" },
+    ]
+  }
+];
+
+let current = 0;
+let score = 0;
+let answered = false;
+let history = [];
+
+function show(id) {
+  ['screen-intro','screen-quiz','screen-result','screen-ref'].forEach(s => {
+    document.getElementById(s).classList.toggle('hidden', s !== id);
+  });
+}
+
+function startQuiz() {
+  current = 0; score = 0; answered = false; history = [];
+  loadQuestion();
+  show('screen-quiz');
+}
+
+function loadQuestion() {
+  const q = questions[current];
+  answered = false;
+
+  document.getElementById('q-counter').textContent = `Questão ${current + 1} de ${questions.length}`;
+  document.getElementById('prog-fill').style.width = ((current / questions.length) * 100) + '%';
+
+  const pill = document.getElementById('bva-pill');
+  pill.textContent = q.type === '2pt' ? 'BVA 2 pontos' : 'BVA 3 pontos';
+  pill.className = 'bva-pill ' + (q.type === '2pt' ? 'pill-2pt' : 'pill-3pt');
+
+  document.getElementById('q-label').textContent = q.label;
+  document.getElementById('q-spec').textContent = 'Especificação: ' + q.spec;
+  document.getElementById('q-desc').textContent = q.desc;
+  document.getElementById('scenario-text').textContent = '"' + q.scenario + '"';
+
+  // diagram
+  const dg = document.getElementById('diagram');
+  dg.innerHTML = '';
+  q.diagram.forEach((item, i) => {
+    const block = document.createElement('div');
+    block.className = 'dblock';
+    block.innerHTML = `<div class="dval is-${item.type}">${item.val}</div><div class="dlabel">${item.label}</div>`;
+    dg.appendChild(block);
+    if (i < q.diagram.length - 1) {
+      const arrow = document.createElement('span');
+      arrow.className = 'darrow';
+      arrow.textContent = '→';
+      dg.appendChild(arrow);
+    }
+  });
+
+  const btnBug = document.getElementById('btn-bug');
+  const btnOk = document.getElementById('btn-ok');
+  btnBug.disabled = false; btnBug.className = 'ans-btn btn-bug';
+  btnOk.disabled = false; btnOk.className = 'ans-btn btn-ok';
+
+  const fb = document.getElementById('fb-panel');
+  fb.className = 'feedback-panel';
+  document.getElementById('next-btn').className = 'next-btn';
+}
+
+function answer(isBug) {
+  if (answered) return;
+  answered = true;
+  const q = questions[current];
+  const correct = isBug === q.isBug;
+  if (correct) score++;
+  history.push(correct);
+
+  const btnBug = document.getElementById('btn-bug');
+  const btnOk = document.getElementById('btn-ok');
+  btnBug.disabled = true; btnOk.disabled = true;
+
+  if (isBug) btnBug.classList.add('selected-bug');
+  else btnOk.classList.add('selected-ok');
+
+  const fb = document.getElementById('fb-panel');
+  fb.className = 'feedback-panel show ' + (correct ? 'correct' : 'wrong');
+  document.getElementById('fb-main').innerHTML =
+    (correct ? '<span class="fb-icon">✓</span> Correto!' : '<span class="fb-icon">✗</span> Não exatamente.');
+  document.getElementById('fb-hint').textContent = q.hint;
+
+  const nextBtn = document.getElementById('next-btn');
+  nextBtn.textContent = current < questions.length - 1 ? 'Próxima questão →' : 'Ver resultado →';
+  nextBtn.className = 'next-btn show';
+}
+
+function nextQuestion() {
+  current++;
+  if (current < questions.length) {
+    loadQuestion();
+  } else {
+    showResult();
+  }
+}
+
+function showResult() {
+  document.getElementById('prog-fill').style.width = '100%';
+  show('screen-result');
+  document.getElementById('res-score').textContent = score;
+
+  const summary = document.getElementById('res-summary');
+  summary.innerHTML = history.map((ok, i) =>
+    `<span class="sum-chip ${ok ? 'sum-correct' : 'sum-wrong'}">Q${i+1} ${ok ? '✓' : '✗'}</span>`
+  ).join('');
+
+  const msgs = [
+    'Continue praticando — reveja os conceitos de partição e limite.',
+    'Bom começo! Atenção especial ao BVA de 3 pontos.',
+    'Quase lá! Reveja os limites adjacentes (min+1, max-1).',
+    'Excelente! Domínio completo de BVA 2 e 3 pontos.'
+  ];
+  document.getElementById('res-msg').textContent = msgs[Math.min(score, 3)];
+}
+
+function showReference() {
+  show('screen-ref');
+}
+
+function restart() {
+  startQuiz();
+}
+</script>
+</body>
+</html>
